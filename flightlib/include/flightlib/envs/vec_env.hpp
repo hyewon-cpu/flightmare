@@ -42,6 +42,10 @@ class VecEnv {
   // public get functions
   void getObs(Ref<MatrixRowMajor<>> obs);
   size_t getEpisodeLength(void);
+  
+  // control truncation
+  void setTruncationEnabled(bool enabled); // hj added
+  bool getTruncationEnabled(void) const; // hj added
 
   // - auxiliary functions
   void isTerminalState(Ref<BoolVector<>> terminal_state);
@@ -93,6 +97,13 @@ class VecEnv {
   // auxiliar variables
   int seed_, num_envs_, obs_dim_, act_dim_;
   Matrix<> obs_dummy_;
+
+  // episode step counters for truncation (one per environment)
+  std::vector<size_t> episode_steps_; // hj added
+  // cached max episode steps (computed once from max_t_ / sim_dt_)
+  size_t max_episode_steps_; // hj added
+  // flag to enable/disable truncation (useful for testing)
+  bool truncation_enabled_; // hj added
 
   // yaml configurations
   YAML::Node cfg_;

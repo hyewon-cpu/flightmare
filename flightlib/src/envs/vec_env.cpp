@@ -44,6 +44,29 @@ void VecEnv<EnvBase>::init(void) {
     envs_.push_back(std::make_unique<EnvBase>());
   }
 
+  // initialize episode step counters for truncation
+  episode_steps_.resize(num_envs_, 0); // hj added  
+  
+  // compute and cache max episode steps (max_t_ / sim_dt_)
+  // Only enable truncation if max_t_ > 0 and sim_dt_ > 0
+  // hj added
+  if (envs_.size() > 0) {
+    Scalar max_t = envs_[0]->getMaxT();
+    Scalar sim_dt = envs_[0]->getSimTimeStep();
+    if (sim_dt > 0.0 && max_t > 0.0) {
+      max_episode_steps_ = static_cast<size_t>(max_t / sim_dt);
+    } else {
+      // Disable truncation if max_t_ or sim_dt_ is invalid
+      max_episode_steps_ = 0;
+      logger_.warn("max_t_ or sim_dt_ is invalid, truncation disabled");
+    }
+  } else {
+    max_episode_steps_ = 0;
+  }
+  
+  // truncation is enabled by default
+  truncation_enabled_ = true; // hj added
+
   // set Unity
   setUnity(unity_render_);
 
@@ -72,6 +95,7 @@ bool VecEnv<EnvBase>::reset(Ref<MatrixRowMajor<>> obs) {
   receive_id_ = 0;
   for (int i = 0; i < num_envs_; i++) {
     envs_[i]->reset(obs.row(i));
+    episode_steps_[i] = 0;  // Reset episode step counter
   }
   return true;
 }
@@ -151,6 +175,16 @@ void VecEnv<EnvBase>::perAgentStep(int agent_id, Ref<MatrixRowMajor<>> act,
   Scalar terminal_reward = 0;
   done(agent_id) = envs_[agent_id]->isTerminalState(terminal_reward);
 
+  // Update episode step counter and check for truncation
+  episode_steps_[agent_id]++; // hj added
+  
+  // Truncate if max episode steps reached (based on max_t_ / sim_dt_)
+  // Only truncate if truncation is enabled and max_episode_steps_ > 0
+  // hj added
+  if (truncation_enabled_ && max_episode_steps_ > 0 && episode_steps_[agent_id] >= max_episode_steps_) {
+    done(agent_id) = true;
+  }
+
   envs_[agent_id]->updateExtraInfo();
   for (int j = 0; j < extra_info.cols(); j++)
     extra_info(agent_id, j) =
@@ -159,6 +193,7 @@ void VecEnv<EnvBase>::perAgentStep(int agent_id, Ref<MatrixRowMajor<>> act,
   if (done[agent_id]) {
     envs_[agent_id]->reset(obs.row(agent_id));
     reward(agent_id) += terminal_reward;
+    episode_steps_[agent_id] = 0;  // Reset counter when episode ends // hj added
   }
 }
 
@@ -200,6 +235,16 @@ void VecEnv<EnvBase>::disconnectUnity(void) {
 template<typename EnvBase>
 void VecEnv<EnvBase>::curriculumUpdate(void) {
   for (int i = 0; i < num_envs_; i++) envs_[i]->curriculumUpdate();
+}
+
+template<typename EnvBase>
+void VecEnv<EnvBase>::setTruncationEnabled(bool enabled) { // hj added
+  truncation_enabled_ = enabled;
+}
+
+template<typename EnvBase>
+bool VecEnv<EnvBase>::getTruncationEnabled(void) const { // hj added
+  return truncation_enabled_;
 }
 
 // template<typename EnvBase>

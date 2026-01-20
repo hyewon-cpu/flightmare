@@ -31,6 +31,10 @@ PYBIND11_MODULE(flightgym, m) {
     .def("getObsDim", &VecEnv<QuadrotorEnv>::getObsDim)
     .def("getActDim", &VecEnv<QuadrotorEnv>::getActDim)
     .def("getExtraInfoNames", &VecEnv<QuadrotorEnv>::getExtraInfoNames)
+    .def("setTruncationEnabled", &VecEnv<QuadrotorEnv>::setTruncationEnabled, // hj added
+         "Enable or disable episode truncation (useful for testing)")
+    .def("getTruncationEnabled", &VecEnv<QuadrotorEnv>::getTruncationEnabled, // hj added
+         "Get whether truncation is enabled")
     .def("__repr__", [](const VecEnv<QuadrotorEnv>& a) {
       return "RPG Drone Racing Environment";
     });
