@@ -59,23 +59,27 @@ def parser():
     parser.add_argument('--seed', type=int, default=0,
                         help="Random seed")
     parser.add_argument('-w', '--weight', type=str, 
-    default='/home/heejun/projects/flightmare/tonediorl/examples/saved/2026-01-20-10-09-03/ppo_final.zip',
+    default='/home/heejun/projects/flightmare/tonediorl/examples/saved/2026-01-21-11-09-20/checkpoints/ppo_model_20000000_steps.zip',
                         help='trained weight path')
     
     # eval freq, model_save_freq 모두 timestep 기준
     parser.add_argument('--total_timesteps', type=int, default=25_000_000,
                    help="Total training timesteps")
     parser.add_argument('--eval_freq', type=int, default=10_000,
-                   help="Eval frequency (timesteps)")
+                   help="Eval frequency (timesteps per env)")
     parser.add_argument('--n_eval_episodes', type=int, default=5,
                    help="Number of eval episodes")
-    
+    parser.add_argument('--checkpoint_freq', type=int, default=50_000, 
+                   help="Checkpoint save frequency (timesteps per env). Default is 50,000 steps.")
+
     # wandb
     parser.add_argument('--wandb', type=int, default=1, help="Enable wandb logging")
     parser.add_argument('--wandb_project', type=str, default='flightmare_ppo', help="wandb project name")
     parser.add_argument('--wandb_run_name', type=str, default=None, help="wandb run name")
     parser.add_argument('--use_obs_norm', type=int, default=1, help="Use observation normalization (1=True, 0=False)")
-    parser.add_argument('--checkpoint_freq', type=int, default=100_000, help="Checkpoint save frequency (timesteps)")
+    parser.add_argument('--rms_path', type=str, default=None, 
+                        help="Path to normalization statistics (.npz file) for testing. "
+                             "If None, will try to find RMS file from checkpoint directory.")
     return parser
 
 def build_env(cfg_yaml_str, use_obs_norm=True):
@@ -253,6 +257,35 @@ def main():
     else:
         # Test mode (simple loop)
         model = PPO.load(args.weight, env=env, device="auto")
+        
+        # Load normalization statistics if normalization is enabled
+        if use_obs_norm:
+            rms_path = args.rms_path
+            if rms_path is None:
+                # Try to find RMS file from checkpoint directory
+                checkpoint_dir = os.path.dirname(args.weight)
+                rms_dir = os.path.join(checkpoint_dir, "RMS")
+                if os.path.exists(rms_dir):
+                    # Find the latest RMS file
+                    rms_files = [f for f in os.listdir(rms_dir) if f.endswith('.npz')]
+                    if rms_files:
+                        # Sort by iteration number
+                        rms_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))
+                        rms_path = os.path.join(rms_dir, rms_files[-1])
+                        print(f"[Test Mode] Found RMS file: {rms_path}")
+                    else:
+                        print(f"[Test Mode] Warning: No RMS files found in {rms_dir}")
+                        print(f"[Test Mode] Continuing without normalization statistics (may affect performance)")
+                else:
+                    print(f"[Test Mode] Warning: RMS directory not found: {rms_dir}")
+                    print(f"[Test Mode] Continuing without normalization statistics (may affect performance)")
+            
+            if rms_path and os.path.exists(rms_path):
+                env.load_rms(rms_path)
+                print(f"[Test Mode] Loaded normalization statistics from: {rms_path}")
+            elif rms_path:
+                print(f"[Test Mode] Warning: RMS file not found: {rms_path}")
+                print(f"[Test Mode] Continuing without normalization statistics (may affect performance)")
         
         # Disable truncation for testing - allow episodes to run until crash or manual stop
         # This allows testing how long the model can hover without time limit
