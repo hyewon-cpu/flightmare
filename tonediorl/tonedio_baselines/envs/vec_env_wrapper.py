@@ -1,6 +1,9 @@
+import os
 import numpy as np
 from gymnasium import spaces
 from stable_baselines3.common.vec_env import VecEnv
+from stable_baselines3.common.running_mean_std import RunningMeanStd
+from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
 
 
 class FlightEnvVec(VecEnv):
@@ -18,8 +21,14 @@ class FlightEnvVec(VecEnv):
       - curriculumUpdate()                (optional)
     """
 
-    def __init__(self, impl):
+    def __init__(self, impl, use_obs_norm: bool = True):
+        """
+        :param impl: C++ VecEnv implementation (flightgym.QuadrotorEnv_v1)
+        :param use_obs_norm: (bool) Whether to use observation normalization. 
+                             If False, observations are returned without normalization.
+        """
         self.wrapper = impl
+        self.use_obs_norm = use_obs_norm
 
         self.num_obs = int(self.wrapper.getObsDim())
         self.num_acts = int(self.wrapper.getActDim())
@@ -54,7 +63,16 @@ class FlightEnvVec(VecEnv):
 
         self.max_episode_steps = 300
 
-        print(f"[FlightEnvVecSB3] num_envs={self._num_envs}, obs_dim={self.num_obs}, act_dim={self.num_acts}")
+        # Observation normalization
+        if self.use_obs_norm:
+            # shape is (obs_dim,) - RunningMeanStd handles batched updates automatically
+            self.obs_rms = RunningMeanStd(shape=(self.num_obs,))
+            self.obs_rms_new = RunningMeanStd(shape=(self.num_obs,))
+        else:
+            self.obs_rms = None
+            self.obs_rms_new = None
+
+        print(f"[FlightEnvVecSB3] num_envs={self._num_envs}, obs_dim={self.num_obs}, act_dim={self.num_acts}, use_obs_norm={self.use_obs_norm}")
 
     def seed(self, seed=0):
         self.wrapper.setSeed(seed)
@@ -100,7 +118,11 @@ class FlightEnvVec(VecEnv):
         self._done[:] = False
         # Flightmare fills the provided obs buffer
         self.wrapper.reset(self._observation)
-        return self._observation.copy()
+        # Update normalization statistics (if enabled)
+        if self.use_obs_norm:
+            self.obs_rms_new.update(self._observation)
+        # Return normalized observation (or raw if normalization disabled)
+        return self.normalize_obs(self._observation)
 
     # def reset_and_update_info(self):
     #     return self.reset(), self._update_epi_info()
@@ -176,6 +198,10 @@ class FlightEnvVec(VecEnv):
         # C++ fills buffers in-place
         self.wrapper.step(self._actions, self._observation, self._reward, self._done, self._extraInfo)
 
+        # Update normalization statistics (if enabled)
+        if self.use_obs_norm:
+            self.obs_rms_new.update(self._observation)
+
         # infos: extra_info만 넣어줌 (episode는 VecMonitor가 처리)
         if len(self._extraInfoNames) > 0:
             infos = [
@@ -186,7 +212,8 @@ class FlightEnvVec(VecEnv):
         else:
             infos = [{} for _ in range(self._num_envs)]
 
-        obs = self._observation.copy()
+        # Return normalized observation
+        obs = self.normalize_obs(self._observation)
         rews = self._reward.copy()
         dones = self._done.copy()
 
@@ -260,3 +287,193 @@ class FlightEnvVec(VecEnv):
         Flightmare rendering is handled by Unity; return empty list to satisfy interface.
         """
         return [None for _ in range(self.num_envs)]
+
+    def _get_indices(self, indices):
+        """
+        Convert indices to a list format.
+        :param indices: (int, list, None) Indices to convert
+        :return: (list) List of indices
+        """
+        if indices is None:
+            return list(range(self.num_envs))
+        elif isinstance(indices, int):
+            return [indices]
+        else:
+            return list(indices)
+
+    def _normalize_obs(self, obs: np.ndarray, obs_rms: RunningMeanStd) -> np.ndarray:
+        """
+        Helper to normalize observation.
+        :param obs: (np.ndarray) Observation to normalize
+        :param obs_rms: (RunningMeanStd) Associated statistics
+        :return: (np.ndarray) Normalized observation
+        """
+        return (obs - obs_rms.mean) / np.sqrt(obs_rms.var + 1e-8)
+
+    def normalize_obs(self, obs: np.ndarray) -> np.ndarray:
+        """
+        Normalize observations using this VecEnv's observation statistics.
+        If normalization is disabled, returns observations as-is.
+        Calling this method does not update statistics.
+        :param obs: (np.ndarray) Observation to normalize
+        :return: (np.ndarray) Normalized observation (or raw if normalization disabled)
+        """
+        if not self.use_obs_norm:
+            return obs.astype(np.float32)
+        return self._normalize_obs(obs, self.obs_rms).astype(np.float32)
+
+    def update_rms(self):
+        """
+        Update the running mean/std statistics by copying obs_rms_new to obs_rms.
+        This should be called periodically (e.g., at the end of each rollout).
+        Does nothing if normalization is disabled.
+        """
+        if not self.use_obs_norm:
+            return
+        # Copy stats including count
+        self.obs_rms.mean = self.obs_rms_new.mean.copy()
+        self.obs_rms.var = self.obs_rms_new.var.copy()
+        self.obs_rms.count = float(self.obs_rms_new.count)
+
+    def get_obs_norm(self):
+        """
+        Get current normalization statistics (mean and variance).
+        :return: (tuple) (mean, var) tuple of current normalization statistics
+        """
+        return self.obs_rms.mean, self.obs_rms.var
+
+    def save_rms(self, save_dir: str, n_iter: int) -> None:
+        """
+        Save normalization statistics to disk.
+        :param save_dir: (str) Directory to save statistics to
+        :param n_iter: (int) Iteration number for filename
+        """
+        os.makedirs(save_dir, exist_ok=True)
+        path = os.path.join(save_dir, f"iter_{n_iter:05d}.npz")
+        np.savez(
+            path,
+            mean=self.obs_rms.mean,
+            var=self.obs_rms.var,
+            count=np.array([self.obs_rms.count], dtype=np.float64),
+        )
+
+    def load_rms(self, data_path: str) -> None:
+        """
+        Load normalization statistics from disk.
+        :param data_path: (str) Path to .npz file containing mean, var, and optionally count
+        """
+        np_file = np.load(data_path)
+        self.obs_rms.mean = np_file["mean"].copy()
+        self.obs_rms.var = np_file["var"].copy()
+        self.obs_rms.count = float(np_file["count"][0]) if "count" in np_file else 1.0
+
+        # new도 동일하게 맞춰두기
+        self.obs_rms_new.mean = self.obs_rms.mean.copy()
+        self.obs_rms_new.var = self.obs_rms.var.copy()
+        self.obs_rms_new.count = float(self.obs_rms.count)
+
+
+class ObsNormUpdateCallback(BaseCallback):
+    """
+    Callback to automatically update observation normalization statistics
+    at the end of each rollout during SB3 training.
+    
+    This matches the pattern used in rpg_baselines where update_rms() is called
+    periodically during training. In SB3, this happens at the end of each rollout.
+    
+    Usage:
+        from tonedio_baselines.envs.vec_env_wrapper import ObsNormUpdateCallback
+        
+        callback = ObsNormUpdateCallback()
+        model.learn(total_timesteps=1e6, callback=callback)
+    """
+    
+    def _on_step(self) -> bool:
+        """
+        Called at each step. We don't need to do anything here,
+        just return True to continue training.
+        """
+        return True
+    
+    def _on_rollout_end(self) -> None:
+        """
+        Called at the end of each rollout (after collecting n_steps).
+        Updates normalization statistics for all FlightEnvVec instances in the wrapper chain.
+        """
+        # Find FlightEnvVec in the environment wrapper chain
+        env = self.training_env
+        while env is not None:
+            if isinstance(env, FlightEnvVec):
+                env.update_rms()
+                break  # Only need to update once
+            # Traverse wrapper chain
+            if hasattr(env, 'venv'):
+                env = env.venv
+            elif hasattr(env, 'envs') and len(env.envs) > 0:
+                # DummyVecEnv or similar
+                env = env.envs[0]
+            else:
+                break
+
+
+class CheckpointCallbackWithRMS(CheckpointCallback):
+    """
+    Extended CheckpointCallback that also saves observation normalization statistics
+    whenever a model checkpoint is saved.
+    
+    Usage:
+        from tonedio_baselines.envs.vec_env_wrapper import CheckpointCallbackWithRMS
+        
+        callback = CheckpointCallbackWithRMS(
+            save_freq=10000,
+            save_path="./checkpoints",
+            name_prefix="ppo_model"
+        )
+        model.learn(total_timesteps=1e6, callback=callback)
+    """
+    
+    def __init__(self, *args, **kwargs):
+        """
+        Same parameters as CheckpointCallback.
+        """
+        super().__init__(*args, **kwargs)
+        self._rms_save_counter = 0
+    
+    def _on_step(self) -> bool:
+        """
+        Override to save RMS statistics when checkpoint is saved.
+        """
+        # Check if checkpoint will be saved this step
+        will_save = self.n_calls > 0 and self.n_calls % self.save_freq == 0
+        
+        # Call parent to save checkpoint
+        result = super()._on_step()
+        
+        # Save RMS statistics if checkpoint was saved
+        if will_save:
+            self._save_rms()
+        
+        return result
+    
+    def _save_rms(self) -> None:
+        """
+        Save normalization statistics to the same directory as checkpoints.
+        """
+        # Find FlightEnvVec in the environment wrapper chain
+        env = self.training_env
+        while env is not None:
+            if isinstance(env, FlightEnvVec):
+                # Save RMS in a subdirectory
+                rms_dir = os.path.join(self.save_path, "RMS")
+                self._rms_save_counter += 1
+                env.save_rms(rms_dir, self._rms_save_counter)
+                if self.verbose > 0:
+                    print(f"Saved normalization statistics to {rms_dir}/iter_{self._rms_save_counter:05d}.npz")
+                break
+            # Traverse wrapper chain
+            if hasattr(env, 'venv'):
+                env = env.venv
+            elif hasattr(env, 'envs') and len(env.envs) > 0:
+                env = env.envs[0]
+            else:
+                break

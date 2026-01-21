@@ -17,6 +17,10 @@ import torch
 # from rpg_baselines.ppo.ppo2 import PPO2
 # from rpg_baselines.ppo.ppo2_test import test_model
 from tonedio_baselines.envs import vec_env_wrapper as wrapper
+from tonedio_baselines.envs.vec_env_wrapper import (
+    ObsNormUpdateCallback,
+    CheckpointCallbackWithRMS
+)
 import tonedio_baselines.common.util as U
 #
 from flightgym import QuadrotorEnv_v1
@@ -27,6 +31,12 @@ from stable_baselines3.common.callbacks import EvalCallback, CallbackList, Check
 
 import wandb
 from wandb.integration.sb3 import WandbCallback
+
+"""
+python run_drone_control.py --train 1 --use_obs_norm 1 --render 0 --wandb_run_name "test_run_1"
+
+
+"""
 
 
 def configure_random_seed(seed, env=None):
@@ -64,10 +74,12 @@ def parser():
     parser.add_argument('--wandb', type=int, default=1, help="Enable wandb logging")
     parser.add_argument('--wandb_project', type=str, default='flightmare_ppo', help="wandb project name")
     parser.add_argument('--wandb_run_name', type=str, default=None, help="wandb run name")
+    parser.add_argument('--use_obs_norm', type=int, default=1, help="Use observation normalization (1=True, 0=False)")
+    parser.add_argument('--checkpoint_freq', type=int, default=100_000, help="Checkpoint save frequency (timesteps)")
     return parser
 
-def build_env(cfg_yaml_str):
-    env = wrapper.FlightEnvVec(QuadrotorEnv_v1(cfg_yaml_str, False))
+def build_env(cfg_yaml_str, use_obs_norm=True):
+    env = wrapper.FlightEnvVec(QuadrotorEnv_v1(cfg_yaml_str, False), use_obs_norm=use_obs_norm)
     env = VecMonitor(env)  # episode stats logging
     # VecMonitor는 episode가 끝날 때마다 정보 업데이트. 
     return env
@@ -95,7 +107,8 @@ def main():
     # print(cfg_yaml_str)
 
     # main env
-    env = build_env(cfg_yaml_str)
+    use_obs_norm = bool(args.use_obs_norm)
+    env = build_env(cfg_yaml_str, use_obs_norm=use_obs_norm)
 
     # set random seed
     configure_random_seed(args.seed, env=env)
@@ -111,10 +124,7 @@ def main():
         n_steps = 250
         batch_size = n_steps * n_envs  # emulate nminibatches=1
 
-        policy_kwargs = dict(
-            net_arch=dict(pi=[128, 128], vf=[128, 128]),
-            activation_fn=torch.nn.ReLU,
-        )
+ 
 
         # wandb init
         wandb_run = None
@@ -144,6 +154,11 @@ def main():
 
         model = PPO(
             policy="MlpPolicy",
+            policy_kwargs=dict(
+                activation_fn=torch.nn.ReLU,
+                net_arch=[dict(pi=[256, 256], vf=[512, 512])],
+                log_std_init=-0.5,
+            ),
             env=env,
             learning_rate=3e-4,
             n_steps=n_steps,
@@ -155,8 +170,8 @@ def main():
             ent_coef=0.0,
             vf_coef=0.5,
             max_grad_norm=0.5,
-            policy_kwargs=policy_kwargs,
             tensorboard_log=saver.data_dir,
+            use_sde=False,
             verbose=1,
             device="cuda",
         )
@@ -168,23 +183,48 @@ def main():
         eval_stream = io.StringIO()
         yaml.dump(eval_cfg, eval_stream)
         eval_cfg_yaml_str = eval_stream.getvalue()
-        eval_env = build_env(eval_cfg_yaml_str)
+        eval_env = build_env(eval_cfg_yaml_str, use_obs_norm=use_obs_norm)
 
-        eval_callback = EvalCallback(
-            eval_env,
-            best_model_save_path=os.path.join(saver.data_dir, "best_model"),
-            log_path=os.path.join(saver.data_dir, "eval_logs"),
-            eval_freq=args.eval_freq,
-            n_eval_episodes=args.n_eval_episodes,
-            deterministic=True,
-            render=False,
-            verbose=1,
-            warn=False,  # 평가 중 경고 메시지 억제
-        )
+        # eval_callback = EvalCallback(
+        #     eval_env,
+        #     best_model_save_path=os.path.join(saver.data_dir, "best_model"),
+        #     log_path=os.path.join(saver.data_dir, "eval_logs"),
+        #     eval_freq=args.eval_freq,
+        #     n_eval_episodes=args.n_eval_episodes,
+        #     deterministic=True,
+        #     render=False,
+        #     verbose=1,
+        #     warn=False,  # 평가 중 경고 메시지 억제
+        # )
 
         # callback_list = [eval_callback]
 
         callback_list = []
+        
+        # Add observation normalization callbacks (only if normalization is enabled)
+        if use_obs_norm:
+            # Add observation normalization update callback
+            # This automatically calls update_rms() at the end of each rollout
+            callback_list.append(ObsNormUpdateCallback())
+            
+            # Add checkpoint callback that also saves normalization statistics
+            checkpoint_callback = CheckpointCallbackWithRMS(
+                save_freq=args.checkpoint_freq,
+                save_path=os.path.join(saver.data_dir, "checkpoints"),
+                name_prefix="ppo_model",
+                verbose=1,
+            )
+            callback_list.append(checkpoint_callback)
+        else:
+            # Use regular CheckpointCallback when normalization is disabled
+            from stable_baselines3.common.callbacks import CheckpointCallback
+            checkpoint_callback = CheckpointCallback(
+                save_freq=args.checkpoint_freq,
+                save_path=os.path.join(saver.data_dir, "checkpoints"),
+                name_prefix="ppo_model",
+                verbose=1,
+            )
+            callback_list.append(checkpoint_callback)
 
         if args.wandb:
             callback_list.append(WandbCallback(
@@ -207,7 +247,6 @@ def main():
             model.save(os.path.join(saver.data_dir, "ppo_final"))
         finally:
             # 환경 정리
-
             eval_env.close()
             env.close()
 
