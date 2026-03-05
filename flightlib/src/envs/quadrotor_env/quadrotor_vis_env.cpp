@@ -31,12 +31,47 @@ QuadrotorVisEnv::QuadrotorVisEnv(const std::string &cfg_path)
   // add RGB camera for image observations
   rgb_camera_ = std::make_shared<RGBCamera>();
 
-  // Explicit camera pose (body -> camera) to avoid camera being inside the body.
+  // Camera defaults (body -> camera). Can be overridden from YAML:
+  // quadrotor_env.camera.{rel_pos, rel_quat_wxyz, width, height, fov}
   Vector<3> B_r_BC(0.0, 0.0, 0.3);
-  Matrix<3, 3> R_BC = Quaternion(1.0, 0.0, 0.0, 0.0).toRotationMatrix();
-  
-  rgb_camera_->setWidth(quadvisenv::kImgWidth);
-  rgb_camera_->setHeight(quadvisenv::kImgHeight);
+  Quaternion q_BC(1.0, 0.0, 0.0, 0.0);  // w, x, y, z
+  int cam_width = quadvisenv::kImgWidth;
+  int cam_height = quadvisenv::kImgHeight;
+  Scalar cam_fov = 70.0;
+
+  if (cfg_["quadrotor_env"] && cfg_["quadrotor_env"]["camera"]) {
+    const YAML::Node cam_cfg = cfg_["quadrotor_env"]["camera"];
+
+    if (cam_cfg["rel_pos"] && cam_cfg["rel_pos"].IsSequence() &&
+        cam_cfg["rel_pos"].size() == 3) {
+      B_r_BC << cam_cfg["rel_pos"][0].as<Scalar>(),
+        cam_cfg["rel_pos"][1].as<Scalar>(), cam_cfg["rel_pos"][2].as<Scalar>();
+    }
+
+    if (cam_cfg["rel_quat_wxyz"] && cam_cfg["rel_quat_wxyz"].IsSequence() &&
+        cam_cfg["rel_quat_wxyz"].size() == 4) {
+      q_BC = Quaternion(cam_cfg["rel_quat_wxyz"][0].as<Scalar>(),
+                        cam_cfg["rel_quat_wxyz"][1].as<Scalar>(),
+                        cam_cfg["rel_quat_wxyz"][2].as<Scalar>(),
+                        cam_cfg["rel_quat_wxyz"][3].as<Scalar>());
+      if (q_BC.norm() > 1e-9) {
+        q_BC.normalize();
+      } else {
+        logger_.warn("Invalid camera quaternion norm in YAML. Using identity.");
+        q_BC = Quaternion(1.0, 0.0, 0.0, 0.0);
+      }
+    }
+
+    if (cam_cfg["width"]) cam_width = cam_cfg["width"].as<int>();
+    if (cam_cfg["height"]) cam_height = cam_cfg["height"].as<int>();
+    if (cam_cfg["fov"]) cam_fov = cam_cfg["fov"].as<Scalar>();
+  }
+
+  Matrix<3, 3> R_BC = q_BC.toRotationMatrix();
+
+  rgb_camera_->setWidth(cam_width);
+  rgb_camera_->setHeight(cam_height);
+  rgb_camera_->setFOV(cam_fov);
   rgb_camera_->setRelPose(B_r_BC, R_BC);
 
   rgb_camera_->setPostProcesscing(std::vector<bool>{false, false, false});

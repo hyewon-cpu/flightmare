@@ -6,4 +6,4 @@ docker run -it --privileged --runtime=nvidia --gpus=all \
   -v /dev:/dev \
   -e DISPLAY=$DISPLAY \
   -e PULSE_SERVER=unix:/run/user/0/pulse/native \
-  --net host --name fm flightmare
+  --net host --rm --name flightmare flightmare
