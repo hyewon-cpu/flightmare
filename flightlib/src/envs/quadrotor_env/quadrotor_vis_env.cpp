@@ -18,6 +18,10 @@ QuadrotorVisEnv::QuadrotorVisEnv(const std::string &cfg_path)
     goal_ori_(Vector<3>::Zero()),
     goal_lin_vel_(Vector<3>::Zero()),
     goal_ang_vel_(Vector<3>::Zero()) {
+  // If the first camera frame is delayed, keep a deterministic black frame
+  // instead of uninitialized memory in observations.
+  quad_obs_.setZero();
+  quad_act_.setZero();
 
   // load configuration file
   YAML::Node cfg_ = YAML::LoadFile(cfg_path);

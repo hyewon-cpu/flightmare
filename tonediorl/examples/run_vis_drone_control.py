@@ -65,7 +65,7 @@ def parser():
     parser.add_argument('--num_threads', type=int, default=1,
                         help="Number of environment worker threads.")
     parser.add_argument('-w', '--weight', type=str, 
-    default='/home/heejun/projects/flightmare/tonediorl/examples/saved/2026-03-05-09-54-29/checkpoints/ppo_model_25000000_steps.zip',
+    default='/home/landing_reorg/tonediorl/examples/vis/saved/2026-03-05-09-54-29/checkpoints/ppo_model_25000000_steps.zip',
                         help='trained weight path')
     
     # eval freq, model_save_freq 모두 timestep 기준
@@ -77,6 +77,8 @@ def parser():
                    help="Number of eval episodes")
     parser.add_argument('--checkpoint_freq', type=int, default=50_000, 
                    help="Checkpoint save frequency (timesteps per env). Default is 50,000 steps.")
+    parser.add_argument('--scene', type=int, default = 1,
+                    help = "choose scene_id")
 
     # wandb
     parser.add_argument('--wandb', type=int, default=1, help="Enable wandb logging")
@@ -114,6 +116,7 @@ def main():
 
     cfg["env"]["num_envs"] = max(1, int(args.num_envs))
     cfg["env"]["num_threads"] = max(1, int(args.num_threads))
+    cfg["env"]["scene_id"] = args.scene
     if cfg["env"]["num_envs"] > 8:
         print(f"[Warning] num_envs={cfg['env']['num_envs']} in RGB+Unity mode may be unstable/slow. Start with 1-8.")
     

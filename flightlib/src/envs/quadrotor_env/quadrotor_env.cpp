@@ -13,7 +13,7 @@ QuadrotorEnv::QuadrotorEnv(const std::string &cfg_path)
     lin_vel_coeff_(0.0),
     ang_vel_coeff_(0.0),
     act_coeff_(0.0),
-    goal_state_((Vector<quadenv::kNObs>() << 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 0.0,
+    goal_state_((Vector<quadenv::kNObs>() << 5.0, 7.0, 3.0, 0.0, 0.0, 0.0, 0.0,
                  0.0, 0.0, 0.0, 0.0, 0.0)
                   .finished()) {
   // load configuration file
@@ -51,22 +51,35 @@ bool QuadrotorEnv::reset(Ref<Vector<>> obs, const bool random) {
   quad_act_.setZero();
 
   if (random) {
-    // randomly reset the quadrotor state
-    // reset position
-    quad_state_.x(QS::POSX) = uniform_dist_(random_gen_) + spawn_offset_(0);
-    quad_state_.x(QS::POSY) = uniform_dist_(random_gen_) + spawn_offset_(1);
-    quad_state_.x(QS::POSZ) = uniform_dist_(random_gen_) + 20 + spawn_offset_(2);
-    if (quad_state_.x(QS::POSZ) < -0.0)
-      quad_state_.x(QS::POSZ) = -quad_state_.x(QS::POSZ);
-    // reset linear velocity
-    quad_state_.x(QS::VELX) = uniform_dist_(random_gen_);
-    quad_state_.x(QS::VELY) = uniform_dist_(random_gen_);
-    quad_state_.x(QS::VELZ) = uniform_dist_(random_gen_);
-    // reset orientation
-    quad_state_.x(QS::ATTW) = uniform_dist_(random_gen_);
-    quad_state_.x(QS::ATTX) = uniform_dist_(random_gen_);
-    quad_state_.x(QS::ATTY) = uniform_dist_(random_gen_);
-    quad_state_.x(QS::ATTZ) = uniform_dist_(random_gen_);
+    // Landing task: keep respawn close to a nominal start state.
+    const Scalar pos_xy_noise = 0.5;
+    const Scalar pos_z_noise = 0.5;
+    const Scalar vel_noise = 0.2;
+    const Scalar att_noise = 0.05;
+    const Scalar start_above_goal_z = 20.0;
+
+    // reset position (near target XY, slightly above landing height)
+    quad_state_.x(QS::POSX) =
+      goal_state_(quadenv::kPos + 0) +
+      pos_xy_noise * uniform_dist_(random_gen_) + spawn_offset_(0);
+    quad_state_.x(QS::POSY) =
+      goal_state_(quadenv::kPos + 1) +
+      pos_xy_noise * uniform_dist_(random_gen_) + spawn_offset_(1);
+    quad_state_.x(QS::POSZ) =
+      goal_state_(quadenv::kPos + 2) + start_above_goal_z +
+      pos_z_noise * uniform_dist_(random_gen_) + spawn_offset_(2);
+    if (quad_state_.x(QS::POSZ) < 0.0) quad_state_.x(QS::POSZ) = 0.0;
+
+    // reset linear velocity (small)
+    quad_state_.x(QS::VELX) = vel_noise * uniform_dist_(random_gen_);
+    quad_state_.x(QS::VELY) = vel_noise * uniform_dist_(random_gen_);
+    quad_state_.x(QS::VELZ) = vel_noise * uniform_dist_(random_gen_);
+
+    // reset orientation (near level)
+    quad_state_.x(QS::ATTW) = 1.0;
+    quad_state_.x(QS::ATTX) = att_noise * uniform_dist_(random_gen_);
+    quad_state_.x(QS::ATTY) = att_noise * uniform_dist_(random_gen_);
+    quad_state_.x(QS::ATTZ) = att_noise * uniform_dist_(random_gen_);
     quad_state_.qx /= quad_state_.qx.norm();
   }
   // reset quadrotor with random states
@@ -104,45 +117,64 @@ Scalar QuadrotorEnv::step(const Ref<Vector<>> act, Ref<Vector<>> obs) {
   // update observations
   getObs(obs);
 
-  Matrix<3, 3> rot = quad_state_.q().toRotationMatrix();
+  // ---------------------- landing-centric shaping reward
+  const Vector<2> pos_xy = quad_state_.p.head<2>();
+  const Vector<2> goal_xy = goal_state_.segment<2>(quadenv::kPos);
+  const Scalar z = quad_state_.x(QS::POSZ);
+  const Scalar goal_z = goal_state_(quadenv::kPos + 2);
 
-  // ---------------------- reward function design
-  // - position tracking
-  Scalar pos_reward =
-    pos_coeff_ * (quad_obs_.segment<quadenv::kNPos>(quadenv::kPos) -
-                  goal_state_.segment<quadenv::kNPos>(quadenv::kPos))
-                   .squaredNorm();
-  // - orientation tracking
-  Scalar ori_reward =
-    ori_coeff_ * (quad_obs_.segment<quadenv::kNOri>(quadenv::kOri) -
-                  goal_state_.segment<quadenv::kNOri>(quadenv::kOri))
-                   .squaredNorm();
-  // - linear velocity tracking
-  Scalar lin_vel_reward =
-    lin_vel_coeff_ * (quad_obs_.segment<quadenv::kNLinVel>(quadenv::kLinVel) -
-                      goal_state_.segment<quadenv::kNLinVel>(quadenv::kLinVel))
-                       .squaredNorm();
-  // - angular velocity tracking
-  Scalar ang_vel_reward =
-    ang_vel_coeff_ * (quad_obs_.segment<quadenv::kNAngVel>(quadenv::kAngVel) -
-                      goal_state_.segment<quadenv::kNAngVel>(quadenv::kAngVel))
-                       .squaredNorm();
+  const Scalar xy_err_sq = (pos_xy - goal_xy).squaredNorm();
+  const Scalar z_err = z - goal_z;
+  const Scalar vel_sq = quad_state_.v.squaredNorm();
+  const Scalar speed = std::sqrt(vel_sq);
+  const Scalar roll = quad_obs_(quadenv::kOri + 2);
+  const Scalar pitch = quad_obs_(quadenv::kOri + 1);
+  const Scalar tilt_sq = roll * roll + pitch * pitch;
+
+  const Scalar w_xy = 1.0;
+  const Scalar w_z = 0.3;
+  const Scalar w_vel = (z < 1.0) ? 0.12 : 0.05;
+  const Scalar w_tilt = 0.1;
+  const Scalar time_penalty = 0.01;
+  const Scalar speed_soft_limit = 1.5;   // m/s
+  const Scalar speed_hard_limit = 3.0;   // m/s
+  const Scalar w_speed_excess = 0.5;
+  const Scalar hard_speed_penalty = 2.0;
+
+  Scalar shaping_reward = 0.0;
+  shaping_reward -= w_xy * xy_err_sq;
+  shaping_reward -= w_z * z_err * z_err;
+  shaping_reward -= w_vel * vel_sq;
+  shaping_reward -= w_tilt * tilt_sq;
+  shaping_reward -= time_penalty;
+  if (speed > speed_soft_limit) {
+    const Scalar dv = speed - speed_soft_limit;
+    shaping_reward -= w_speed_excess * dv * dv;
+  }
+  if (speed > speed_hard_limit) {
+    shaping_reward -= hard_speed_penalty;
+  }
 
   // - control action penalty
-  Scalar act_reward = act_coeff_ * act.cast<Scalar>().norm();
+  const Scalar act_reward = act_coeff_ * act.cast<Scalar>().norm();
 
-  Scalar total_reward =
-    pos_reward + ori_reward + lin_vel_reward + ang_vel_reward + act_reward;
-
-  // survival reward
-  total_reward += 0.1;
-
-  return total_reward;
+  return shaping_reward + act_reward;
 }
 
 bool QuadrotorEnv::isTerminalState(Scalar &reward) {
-  if (quad_state_.x(QS::POSZ) <= 0.02) {
-    reward = -0.02;
+  // Ground plane is assumed around z=3.0.
+  if (quad_state_.x(QS::POSZ) <= 3.02) {
+    const Scalar xy_error =
+      (quad_state_.p.head<2>() - goal_state_.segment<2>(quadenv::kPos)).norm();
+    const Scalar vz = std::abs(quad_state_.x(QS::VELZ));
+    const Vector<3> euler_zyx =
+      quad_state_.q().toRotationMatrix().eulerAngles(2, 1, 0);
+    const Scalar tilt = std::sqrt(
+      euler_zyx(1) * euler_zyx(1) + euler_zyx(2) * euler_zyx(2));
+
+    const bool success =
+      (xy_error < 0.30) && (vz < 0.50) && (tilt < 0.35);
+    reward = success ? 10.0 : -5.0;
     return true;
   }
   reward = 0.0;

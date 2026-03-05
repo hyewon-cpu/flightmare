@@ -24,6 +24,10 @@ def parse_args():
     parser.add_argument("--display_scale", type=int, default=2, help="Display magnification for the 84x84 image")
     parser.add_argument("--step_dt", type=float, default=0.01, help="Target seconds per env.step (0 disables pacing)")
     parser.add_argument("--fps", type=float, default=0.0, help="If >0, overrides step_dt with 1/fps")
+    parser.add_argument("--save_obs", type=int, default=0, help="1: save obs images from env0 during loop")
+    parser.add_argument("--save_every", type=int, default=1, help="Save one image every N steps")
+    parser.add_argument("--save_max", type=int, default=0, help="Max images to save (0 means unlimited)")
+    parser.add_argument("--save_dir", type=str, default="saved_obs", help="Directory for saved observation images")
     return parser.parse_args()
 
 
@@ -58,6 +62,18 @@ def print_help():
     print("  x   : zero action")
     print("  r   : reset env")
     print("  q   : quit")
+
+
+def to_uint8_image(frame: np.ndarray) -> np.ndarray:
+    if frame.dtype == np.uint8:
+        return frame
+    frame_f = frame.astype(np.float32)
+    max_val = float(np.max(frame_f))
+    min_val = float(np.min(frame_f))
+    # Typical float image ranges are [0,1] or [0,255].
+    if max_val <= 1.0 and min_val >= 0.0:
+        frame_f *= 255.0
+    return np.clip(frame_f, 0.0, 255.0).astype(np.uint8)
 
 
 def update_action_from_key(action, key, delta):
@@ -104,13 +120,13 @@ def update_action_from_key(action, key, delta):
 def main():
     args = parse_args()
     cv2 = None
-    if args.show_image:
+    if args.show_image or args.save_obs:
         try:
             import cv2 as _cv2
             cv2 = _cv2
         except ModuleNotFoundError as e:
             raise RuntimeError(
-                "show_image=1 requires OpenCV. Install with: pip install opencv-python"
+                "show_image=1 or save_obs=1 requires OpenCV. Install with: pip install opencv-python"
             ) from e
 
     env = build_env(args.num_envs, args.num_threads)
@@ -134,6 +150,18 @@ def main():
     print_help()
     print(f"obs shape: {obs.shape}, action shape per env: {action_single.shape}")
 
+    save_count = 0
+    save_every = max(1, int(args.save_every))
+    save_max = max(0, int(args.save_max))
+    save_dir = None
+    if args.save_obs:
+        save_dir = os.path.abspath(args.save_dir)
+        os.makedirs(save_dir, exist_ok=True)
+        print(
+            f"save_obs: enabled, dir={save_dir}, every={save_every} step(s), "
+            f"max={'unlimited' if save_max == 0 else save_max}"
+        )
+
     step_count = 0
     target_dt = float(args.step_dt)
     if float(args.fps) > 0.0:
@@ -148,6 +176,20 @@ def main():
             action_batch[:] = action_single[None, :]
             obs, reward, done, info = env.step(action_batch)
             step_count += 1
+
+            if args.save_obs and (step_count % save_every == 0):
+                if save_max == 0 or save_count < save_max:
+                    frame_uint8 = to_uint8_image(obs[0])
+                    out_path = os.path.join(
+                        save_dir,
+                        f"obs_env0_step_{step_count:08d}.png",
+                    )
+                    ok = cv2.imwrite(out_path, frame_uint8)
+                    if not ok:
+                        raise RuntimeError(f"Failed to save image: {out_path}")
+                    save_count += 1
+                    if save_count <= 5 or save_count % 50 == 0:
+                        print(f"[ObsSaved] {out_path}")
 
             if args.show_image:
                 frame = obs[0]
@@ -182,6 +224,10 @@ def main():
                 obs = env.reset()
 
             if args.max_steps > 0 and step_count >= args.max_steps:
+                break
+
+            if args.save_obs and save_max > 0 and save_count >= save_max:
+                print(f"Reached save_max={save_max}, stopping loop.")
                 break
 
             if target_dt > 0.0:

@@ -59,7 +59,7 @@ def parser():
     parser.add_argument('--seed', type=int, default=0,
                         help="Random seed")
     parser.add_argument('-w', '--weight', type=str, 
-    default='/home/heejun/projects/flightmare/tonediorl/examples/saved/2026-03-05-09-54-29/checkpoints/ppo_model_25000000_steps.zip',
+    default='/home/landing_reorg/tonediorl/examples/GT/saved/2026-03-05-09-54-29/checkpoints/ppo_model_25000000_steps.zip',
                         help='trained weight path')
     
     # eval freq, model_save_freq 모두 timestep 기준
@@ -71,6 +71,8 @@ def parser():
                    help="Number of eval episodes")
     parser.add_argument('--checkpoint_freq', type=int, default=50_000, 
                    help="Checkpoint save frequency (timesteps per env). Default is 50,000 steps.")
+    parser.add_argument('--scene', type=int, default = 1,
+                    help = "choose scene_id")
 
     # wandb
     parser.add_argument('--wandb', type=int, default=1, help="Enable wandb logging")
@@ -100,6 +102,7 @@ def main():
     if not args.train:
         cfg["env"]["num_envs"] = 1
         cfg["env"]["num_threads"] = 1
+        cfg["env"]["scene_id"] = args.scene
 
     cfg["env"]["render"] = "yes" if args.render else "no"
 
