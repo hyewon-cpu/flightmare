@@ -54,7 +54,7 @@ def parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--train', type=int, default=1,
                         help="To train new model or simply test pre-trained model")
-    parser.add_argument('--render', type=int, default=0,
+    parser.add_argument('--render', type=int, default=1,
                         help="Enable Unity Render")
     parser.add_argument('--save_dir', type=str, default=os.path.dirname(os.path.realpath(__file__)),
                         help="Directory where to save the checkpoints and training metrics")

@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument("--control_step", type=float, default=0.05)
     parser.add_argument("--max_steps", type=int, default=0, help="0 means infinite")
     parser.add_argument("--show_image", type=int, default=1, help="1: cv2 window")
-    parser.add_argument("--display_scale", type=int, default=2, help="Display magnification for the 84x84 image")
+    parser.add_argument("--display_scale", type=int, default=4, help="Display magnification for the 84x84 image")
     parser.add_argument("--step_dt", type=float, default=0.01, help="Target seconds per env.step (0 disables pacing)")
     parser.add_argument("--fps", type=float, default=0.0, help="If >0, overrides step_dt with 1/fps")
     parser.add_argument("--save_obs", type=int, default=0, help="1: save obs images from env0 during loop")
@@ -174,6 +174,7 @@ def main():
         while True:
             t0 = time.perf_counter()
             action_batch[:] = action_single[None, :]
+
             obs, reward, done, info = env.step(action_batch)
             step_count += 1
 

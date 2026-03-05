@@ -1,8 +1,15 @@
 quadrotor_env:
-   camera: no
    sim_dt: 0.02 
    max_t: 10.0
-   add_camera: yes
+   camera:
+     # Camera pose in quadrotor body frame (B -> C)
+     # pos [0.0, 0.0, -0.3] quaternion [0.7071, -0.7071, 0.0, 0.0] -> 아래 보기
+     # pos [0.0, 0.0, 0.3] quaternion [1.0, 0.0, 0.0, 0.0] -> 앞에 보기
+     rel_pos: [0.0, 0.0, -0.3]          # [x, y, z] meters
+     rel_quat_wxyz: [0.7071, -0.7071, 0.0, 0.0] # quaternion [w, x, y, z]
+     width: 256
+     height: 256
+     fov: 70.0
 
 quadrotor_dynamics:
   mass: 0.73
