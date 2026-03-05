@@ -56,11 +56,21 @@ def parser():
                         help="Enable Unity Render")
     parser.add_argument('--save_dir', type=str, default=os.path.dirname(os.path.realpath(__file__)),
                         help="Directory where to save the checkpoints and training metrics")
+    parser.add_argument('--save_name', type=str, default="",
+                        help="If set, use this fixed folder name under <script_dir>/saved instead of timestamp.")
     parser.add_argument('--seed', type=int, default=0,
                         help="Random seed")
     parser.add_argument('-w', '--weight', type=str, 
-    default='/home/landing_reorg/tonediorl/examples/GT/saved/2026-03-05-09-54-29/checkpoints/ppo_model_25000000_steps.zip',
+    default='/home/landing_reorg/tonediorl/examples/saved/hovering3-landing2/checkpoints/ppo_model_75000000_steps.zip',
                         help='trained weight path')
+    parser.add_argument('--load_for_train', type=int, default=0,
+                        help="If 1 and --train=1, load --weight and continue training from it.")
+    parser.add_argument('--reward_mode', type=str, default='hover',
+                        choices=['hover', 'landing'],
+                        help="Reward mode in QuadrotorEnv: force hover or force landing.")
+    parser.add_argument('--control_mode', type=str, default='thrust_bodyrate',
+                        choices=['single_rotor_thrust', 'thrust_bodyrate'],
+                        help="Control action mode for QuadrotorEnv.")
     
     # eval freq, model_save_freq 모두 timestep 기준
     parser.add_argument('--total_timesteps', type=int, default=25_000_000,
@@ -93,6 +103,10 @@ def build_env(cfg_yaml_str, use_obs_norm=True):
 
 def main():
     args = parser().parse_args()
+    os.environ["FLIGHTMARE_REWARD_MODE"] = args.reward_mode
+    os.environ["FLIGHTMARE_ACTION_MODE"] = args.control_mode
+    print(f"[Config] FLIGHTMARE_REWARD_MODE={args.reward_mode}")
+    print(f"[Config] FLIGHTMARE_ACTION_MODE={args.control_mode}")
 
     yaml = YAML()  # 기본 typ='rt' (RoundTrip)
     cfg_path = os.path.join(os.environ["FLIGHTMARE_PATH"], "flightlib/configs/vec_env.yaml")
@@ -124,8 +138,15 @@ def main():
     if args.train:
         # save the configuration and other files
         rsg_root = os.path.dirname(os.path.abspath(__file__))
-        log_dir = rsg_root + '/saved'
-        saver = U.ConfigurationSaver(log_dir=log_dir)
+        log_dir = os.path.join(rsg_root, "saved")
+        if args.save_name:
+            data_dir = os.path.join(log_dir, args.save_name)
+            os.makedirs(data_dir, exist_ok=True)
+            print(f"[Train Mode] Using fixed save directory: {data_dir}")
+        else:
+            saver = U.ConfigurationSaver(log_dir=log_dir)
+            data_dir = saver.data_dir
+            print(f"[Train Mode] Using timestamp save directory: {data_dir}")
 
         n_envs = env.num_envs
         n_steps = 250
@@ -141,6 +162,10 @@ def main():
                 name=args.wandb_run_name,
                 config={
                     "algo": "PPO",
+                    "load_for_train": bool(args.load_for_train),
+                    "weight": args.weight,
+                    "reward_mode": args.reward_mode,
+                    "control_mode": args.control_mode,
                     "seed": args.seed,
                     "gamma": 0.99,
                     "gae_lambda": 0.95,
@@ -159,29 +184,37 @@ def main():
                 save_code=True,
             )
 
-        model = PPO(
-            policy="MlpPolicy",
-            policy_kwargs=dict(
-                activation_fn=torch.nn.ReLU,
-                net_arch=[dict(pi=[256, 256], vf=[512, 512])],
-                log_std_init=-0.5,
-            ),
-            env=env,
-            learning_rate=3e-4,
-            n_steps=n_steps,
-            batch_size=batch_size,
-            n_epochs=10,          # PPO2 noptepochs
-            gamma=0.99,
-            gae_lambda=0.95,      # PPO2 lam
-            clip_range=0.2,
-            ent_coef=0.0,
-            vf_coef=0.5,
-            max_grad_norm=0.5,
-            tensorboard_log=saver.data_dir,
-            use_sde=False,
-            verbose=1,
-            device="cuda",
-        )
+        if args.load_for_train:
+            if not os.path.exists(args.weight):
+                raise FileNotFoundError(
+                    f"--load_for_train=1 but weight not found: {args.weight}"
+                )
+            print(f"[Train Mode] Loading pretrained model: {args.weight}")
+            model = PPO.load(args.weight, env=env, device="cuda")
+        else:
+            model = PPO(
+                policy="MlpPolicy",
+                policy_kwargs=dict(
+                    activation_fn=torch.nn.ReLU,
+                    net_arch=[dict(pi=[256, 256], vf=[512, 512])],
+                    log_std_init=-0.5,
+                ),
+                env=env,
+                learning_rate=3e-4,
+                n_steps=n_steps,
+                batch_size=batch_size,
+                n_epochs=10,          # PPO2 noptepochs
+                gamma=0.99,
+                gae_lambda=0.95,      # PPO2 lam
+                clip_range=0.2,
+                ent_coef=0.0,
+                vf_coef=0.5,
+                max_grad_norm=0.5,
+                tensorboard_log=data_dir,
+                use_sde=False,
+                verbose=1,
+                device="cuda",
+            )
 
         # ---- Eval env: force num_envs=1 for evaluation ----
         eval_cfg = cfg.copy()
@@ -217,7 +250,7 @@ def main():
             # Add checkpoint callback that also saves normalization statistics
             checkpoint_callback = CheckpointCallbackWithRMS(
                 save_freq=args.checkpoint_freq,
-                save_path=os.path.join(saver.data_dir, "checkpoints"),
+                save_path=os.path.join(data_dir, "checkpoints"),
                 name_prefix="ppo_model",
                 verbose=1,
             )
@@ -227,7 +260,7 @@ def main():
             from stable_baselines3.common.callbacks import CheckpointCallback
             checkpoint_callback = CheckpointCallback(
                 save_freq=args.checkpoint_freq,
-                save_path=os.path.join(saver.data_dir, "checkpoints"),
+                save_path=os.path.join(data_dir, "checkpoints"),
                 name_prefix="ppo_model",
                 verbose=1,
             )
@@ -237,7 +270,7 @@ def main():
             callback_list.append(WandbCallback(
                 gradient_save_freq=0,
                 model_save_freq=100_000,
-                model_save_path=os.path.join(saver.data_dir, f"wandb_{wandb_run.id}"),
+                model_save_path=os.path.join(data_dir, f"wandb_{wandb_run.id}"),
                 verbose=2,
             ))
 
@@ -249,9 +282,10 @@ def main():
                 tb_log_name="PPO_Flightmare",
                 callback=callbacks,
                 progress_bar=True,
+                reset_num_timesteps=not bool(args.load_for_train),
             )
 
-            model.save(os.path.join(saver.data_dir, "ppo_final"))
+            model.save(os.path.join(data_dir, "ppo_final"))
         finally:
             # 환경 정리
             eval_env.close()

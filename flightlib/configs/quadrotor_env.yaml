@@ -1,12 +1,21 @@
 quadrotor_env:
    sim_dt: 0.02 
    max_t: 10.0
+   action:
+     # mode: single_rotor_thrust | thrust_bodyrate
+     mode: thrust_bodyrate
+     # Used only in thrust_bodyrate mode:
+     # action = [-1,1]^4 -> [collective_thrust, wx, wy, wz]
+     collective_thrust_mean: 9.81
+     collective_thrust_std: 9.81
+     bodyrate_mean: [0.0, 0.0, 0.0]
+     bodyrate_std: [6.0, 6.0, 6.0]
    camera:
      # Camera pose in quadrotor body frame (B -> C)
      # pos [0.0, 0.0, -0.3] quaternion [0.7071, -0.7071, 0.0, 0.0] -> 아래 보기
      # pos [0.0, 0.0, 0.3] quaternion [1.0, 0.0, 0.0, 0.0] -> 앞에 보기
-     rel_pos: [0.0, 0.0, -0.3]          # [x, y, z] meters
-     rel_quat_wxyz: [0.7071, -0.7071, 0.0, 0.0] # quaternion [w, x, y, z]
+     rel_pos: [0.0, 0.0, 0.3]          # [x, y, z] meters
+     rel_quat_wxyz: [1.0, 0.0, 0.0, 0.0] # quaternion [w, x, y, z]
      width: 256
      height: 256
      fov: 70.0
@@ -27,3 +36,28 @@ rl:
   lin_vel_coeff: -0.005   # reward coefficient for linear velocity
   ang_vel_coeff: -0.005   # reward coefficient for angular velocity
   act_coeff: -0.0002  # reward coefficient for control actions
+
+landing_reward:
+  w_xy: 0.05 #coefficient for xy position difference
+  w_z: 0.05 #coefficient for z position difference 
+  xy_gate: 1.0 #apply z penalty only when xy error is within this radius
+  w_early_descend: 0.02 #penalty weight for descending early while far in xy
+  w_vel_near: 0.05 #coefficient for velocity when near
+  w_vel_far: 0.005 #coefficient for velocity when far
+  near_ground_z: 4.0 #z for near the ground 
+  w_tilt: 0.08 #coefficient for tilting. 
+  tilt_soft: 0.35 #soft tilt threshold [rad]
+  tilt_hard: 0.70 #hard tilt threshold [rad]
+  w_tilt_excess: 0.05 #quadratic tilt excess penalty weight
+  tilt_hard_penalty: 0.5 #extra fixed penalty above hard tilt
+  time_penalty: 0.001 #time penalty
+  speed_soft_limit: 1.05 #thresholf speed where overspeed penalty starts
+  speed_hard_limit: 3.0 #stricter speed threshold 
+  w_speed_excess: 0.05 #the wieght of overspeed penalty after crossing threshold 
+  hard_speed_penalty: 0.02 #penaly for going over speed_hard_limit
+  terminal_z: 3.02 #consider terminted when z<terminal_Z
+  success_xy_error: 0.50 #xy error needs to be smaller than this to succeed
+  success_vz: 0.80 #z error needs to be smaller than this to succeed
+  success_tilt: 0.45 #tilt needs to be smaller than this to succeed
+  success_reward: 10.0 
+  failure_reward: -5.0

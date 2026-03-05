@@ -1,0 +1,158 @@
+[33meec886c[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m comment
+[33m493a454[m d
+[33m8cee539[m hyewon
+[33md28126f[m exp for camera quat
+[33m24a48b0[m camera parameters set in quadrotor_env yaml
+[33md15dcd3[m Merge branch 'rgb_reorg' of https://github.com/Tonedio/flightmare into origin/rgb_reorg
+[33ma4e2bb4[m add docker implementation
+[33m61e6d00[m manual control
+[33mbb4d0f0[m re-organize vision-based env 2 : real image
+[33m009272c[m re-organize vision-based environment code
+[33mf281689[m tonedioapp added
+[33m5f6c0fb[m evaluation with RMS loading
+[33m367de7f[m add vecterized env normalization with callbacks & added checkpoint callback
+[33m86df536[m Update README.md
+[33m24a06ff[m delete unnecessary workflows
+[33ma6ff3bc[m add truncation ability in c++ vec env
+[33mbe5c627[m our rl framework : SB3 + gymnasium + torch
+[33m32a2b52[m update newer version of libraries
+[33m833f491[m fixing build error
+[33md4218ae[m documents fixed
+[33m170676e[m Update README.md
+[33m17778ad[m Merge pull request #107 from francofusco/master
+[33m290d425[m Fix format
+[33mbf95e62[m StaticGate can choose its prefab_id
+[33m3d56cdc[m Merge pull request #99 from lukeopteran/master
+[33m095a627[m Clang-format on test
+[33m4c09c01[m Fixed unity_bridge test
+[33m6742fe2[m Fixing clang-formatting
+[33mc51b046[m Make pose protected
+[33ma2af4cb[m Updated StaticObject API
+[33m3afb713[m Fixed typo
+[33m808155a[m Fixed eigen assertion error, missing minimisation weights in trajectory generation, now at 5 0.0,1.0,1.0,1.0,1.0 and updated in docs, working in Melodic 18.04 and Noetic 20.04
+[33m5161d56[m Merge pull request #78 from MarioBonse/master
+[33m512cac0[m merge dev/ros
+[33m0581a97[m resolve conflicts
+[33m019535f[m quick bug fix and gitignore revise
+[33m7d8ca90[m merge dev/ros remote
+[33m98ccee1[m Merge pull request #81 from uzh-rpg/dev/fixbug
+[33m3f2646b[m setup file
+[33m3d6a1a7[m fix a return bug
+[33m4879377[m fix a small bag
+[33md0d57a1[m Merge pull request #53 from Huizerd/ubuntu20fix
+[33mfeb866a[m Fix bug on extra info
+[33m785c87f[m enabled optical flow in camera example
+[33m7356a4a[m changed message
+[33m8dc7b8b[m added missing package and changed flightpilot env
+[33mda84480[m output collisions in flight_pilot
+[33m128ad7e[m added getCollision function to quad
+[33m6ec96b3[m add option to use unity editor in all launch fiiles
+[33mb18d026[m minor change
+[33m98cd5b1[m increase timeout
+[33mf6ae293[m cleaned motion planning example
+[33m8b2983c[m Merge branch 'master' of github.com:uzh-rpg/flightmare
+[33m3c3d14d[m add chinese name to the simulator
+[33mc5ff3e6[m Merge pull request #72 from uzh-rpg/bug/setup
+[33mfc7f3e9[m fix a problem in setup file
+[33m20e30d1[m Merge pull request #69 from uzh-rpg/negre/depth
+[33m16fd627[m fixed formatting and cmake
+[33mb3219b3[m Merge pull request #63 from negre/master
+[33m27df4ef[m add option in camera.launch to use unity editor
+[33m408bd15[m modified depth format (float32)
+[33mc008954[m update readme
+[33m5a9ce68[m delete requirements.txt
+[33m1a53be1[m modified gitignore
+[33mf692385[m added docs
+[33mcbd9b0e[m Merge branch 'master' of github.com:uzh-rpg/flightmare
+[33m87f4712[m Merge pull request #42 from uzh-rpg/dev/samples
+[33m7b85588[m minor revision
+[33mc547d51[m minor changes
+[33m204b3d6[m pull request fixes
+[33m0ead588[m Ubuntu 20.04 opencv fix
+[33md4f0539[m fix variable names
+[33m20ea618[m update to new binary version
+[33m4aa396b[m force eigen to download tag 3.3.4
+[33m5d5d03e[m added ROS samples
+[33md4e15e4[m added clipping plan settings to camera
+[33m3422752[m minor
+[33m4b8f535[m small fix in setup.py
+[33m67d5ff5[m minor updates, readme, requirements. Release Point cloud extractor (GUI)
+[33me863020[m Merge branch 'master' of github.com:uzh-rpg/flightmare
+[33mb9b60a5[m Merge pull request #21 from uzh-rpg/dev/unity_bridge
+[33mc8af170[m fixed comment error
+[33mfe1c6df[m add acknowledgement to FlightGoggles and RaiGym in the header file
+[33m46cd6ed[m cmakelist for unity_bridge unit tests
+[33m72faa30[m merge conflicts
+[33m4f81dce[m added objects and gates
+[33m5102751[m added timeout to getPointCloud
+[33m65166fe[m handle rgb and postprocessing images
+[33m58c2e4c[m Add PointCloud generator to unity_bridge with test
+[33m8b25e89[m added timeout to getPointCloud
+[33mecd74fc[m handle rgb and postprocessing images
+[33mb549ec1[m Add PointCloud generator to unity_bridge with test
+[33mf87685e[m update README
+[33m4580185[m fixed unity connection issue.
+[33md7b47d1[m wip
+[33m2454e1a[m add video link to youtube
+[33mc491a36[m add vidoe link to README
+[33m7b32d72[m Update Readme, add arxiv
+[33m12a90eb[m fix (hack) a problem in quaternion issue using QuadStateEstiamte
+[33madb07d9[m fixed an issue in setup.py
+[33m6b1b08a[m fixed an issus in rl example
+[33m06dc143[m fixed opencv link error in flight_ros_node
+[33m18243a0[m change introduction image
+[33m51481ed[m add flightrender
+[33mc83f90b[m Merge branch 'master' of github.com:uzh-rpg/flightmare
+[33m5f2e8d3[m Merge pull request #6 from uzh-rpg/dev/ros
+[33mf33de97[m unify dependencies version
+[33mca338ef[m README
+[33mbfc02b0[m wip
+[33m220089b[m add example of quadrotor with rgb camera
+[33m742b0c1[m Merge pull request #5 from uzh-rpg/dev/ros
+[33m5055ee6[m add RotorS interface.
+[33mc346407[m Merge pull request #4 from uzh-rpg/dev/rl
+[33m4c70828[m finish minimum RL example.
+[33mc9ba244[m Merge pull request #3 from uzh-rpg/dev/rl
+[33mb656a7f[m wip
+[33m9e6d228[m fix issue in reward function design, RL is working properlly now.
+[33mb665717[m learned some reasonable results
+[33m64c0901[m Updated README
+[33m94ab543[m use cmd feedthrough control mode for RL task
+[33m81867b8[m add flightmare png to readme
+[33m14c53a3[m Merge pull request #2 from uzh-rpg/dev/rl
+[33ma5357fb[m fix a waiting unity messages forever bug in vec_env
+[33m13e8742[m fix a bug in quadrotor
+[33m42fa571[m rl for quadrotor control is working
+[33ma73393c[m modified unity bridge
+[33m8c6bdf5[m ppo for quadrotor contol not working, nan problem.
+[33m34d4d0e[m add unit test for vectorized environments
+[33m2dbe03e[m add yaml node as argument of constructor
+[33ma5ae6af[m pust unity bridge in vectorized environment
+[33mb7a7e1d[m wip
+[33m8ac4edc[m Update cpp_unittests.yml
+[33m64cb8b1[m Update cpp_unittests.yml
+[33md1dc1cd[m testing CPP_CI
+[33m156c0ef[m fix eigen in pybind include problem and some test errors in Github actions
+[33md7d6301[m reade me, fix error in CMakeLists.txt
+[33m2c941a0[m pybind works, fixed error in cmakelist
+[33m05f1175[m add flightrl and rpg baselines
+[33m056a912[m add ros package for flightlib
+[33m217bbb7[m fix bug in vec_env
+[33m5609a50[m Update clang_format.yml
+[33mf9442cd[m resolve conflicts
+[33mcb736b3[m fix clang format errors via right clang-format version
+[33m933582b[m Update clang_format.yml exclude json.hpp
+[33m79f4de0[m fix error in github workflow yml files
+[33m9f51d84[m Update cpp_unittests.yml
+[33ma519a79[m rename workflow files
+[33mb004a5e[m Update README.md
+[33m27d22eb[m Update cpp_unittests.yaml
+[33m89706ad[m Create cpp_unittests.yaml
+[33m300ec1e[m Create clang_format.yaml
+[33m0d42f87[m setting base code
+[33ma240f9c[m gitignore
+[33m37bd354[m readme
+[33m6b31451[m merging
+[33m222d876[m add image
+[33m8b38f72[m Update README.md
+[33m6b7456f[m Initial commit
