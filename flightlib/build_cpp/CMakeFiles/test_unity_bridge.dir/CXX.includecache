@@ -27,6 +27,8 @@ gtest/internal/gtest-death-test-internal.h
 ../externals/googletest-src/googletest/include/gtest/gtest-matchers.h
 atomic
 -
+cstddef
+-
 functional
 -
 memory
@@ -129,6 +131,8 @@ ostream
 -
 string
 -
+string_view
+-
 vector
 -
 gtest/internal/gtest-internal.h
@@ -160,6 +164,8 @@ set
 sstream
 -
 string
+-
+string_view
 -
 type_traits
 -

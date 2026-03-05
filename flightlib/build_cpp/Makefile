@@ -1093,6 +1093,33 @@ src/envs/quadrotor_env/quadrotor_env.cpp.s:
 	$(MAKE) -f CMakeFiles/flightlib.dir/build.make CMakeFiles/flightlib.dir/src/envs/quadrotor_env/quadrotor_env.cpp.s
 .PHONY : src/envs/quadrotor_env/quadrotor_env.cpp.s
 
+src/envs/quadrotor_env/quadrotor_vis_env.o: src/envs/quadrotor_env/quadrotor_vis_env.cpp.o
+
+.PHONY : src/envs/quadrotor_env/quadrotor_vis_env.o
+
+# target to build an object file
+src/envs/quadrotor_env/quadrotor_vis_env.cpp.o:
+	$(MAKE) -f CMakeFiles/flightlib.dir/build.make CMakeFiles/flightlib.dir/src/envs/quadrotor_env/quadrotor_vis_env.cpp.o
+.PHONY : src/envs/quadrotor_env/quadrotor_vis_env.cpp.o
+
+src/envs/quadrotor_env/quadrotor_vis_env.i: src/envs/quadrotor_env/quadrotor_vis_env.cpp.i
+
+.PHONY : src/envs/quadrotor_env/quadrotor_vis_env.i
+
+# target to preprocess a source file
+src/envs/quadrotor_env/quadrotor_vis_env.cpp.i:
+	$(MAKE) -f CMakeFiles/flightlib.dir/build.make CMakeFiles/flightlib.dir/src/envs/quadrotor_env/quadrotor_vis_env.cpp.i
+.PHONY : src/envs/quadrotor_env/quadrotor_vis_env.cpp.i
+
+src/envs/quadrotor_env/quadrotor_vis_env.s: src/envs/quadrotor_env/quadrotor_vis_env.cpp.s
+
+.PHONY : src/envs/quadrotor_env/quadrotor_vis_env.s
+
+# target to generate assembly for a file
+src/envs/quadrotor_env/quadrotor_vis_env.cpp.s:
+	$(MAKE) -f CMakeFiles/flightlib.dir/build.make CMakeFiles/flightlib.dir/src/envs/quadrotor_env/quadrotor_vis_env.cpp.s
+.PHONY : src/envs/quadrotor_env/quadrotor_vis_env.cpp.s
+
 src/envs/test_env.o: src/envs/test_env.cpp.o
 
 .PHONY : src/envs/test_env.o
@@ -1677,6 +1704,9 @@ help:
 	@echo "... src/envs/quadrotor_env/quadrotor_env.o"
 	@echo "... src/envs/quadrotor_env/quadrotor_env.i"
 	@echo "... src/envs/quadrotor_env/quadrotor_env.s"
+	@echo "... src/envs/quadrotor_env/quadrotor_vis_env.o"
+	@echo "... src/envs/quadrotor_env/quadrotor_vis_env.i"
+	@echo "... src/envs/quadrotor_env/quadrotor_vis_env.s"
 	@echo "... src/envs/test_env.o"
 	@echo "... src/envs/test_env.i"
 	@echo "... src/envs/test_env.s"

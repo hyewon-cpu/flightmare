@@ -16,14 +16,14 @@ import torch
 # from rpg_baselines.common.policies import MlpPolicy
 # from rpg_baselines.ppo.ppo2 import PPO2
 # from rpg_baselines.ppo.ppo2_test import test_model
-from tonedio_baselines.envs import vec_env_wrapper as wrapper
-from tonedio_baselines.envs.vec_env_wrapper import (
+from tonedio_baselines.envs import vis_vec_env_wrapper as wrapper
+from tonedio_baselines.envs.vis_vec_env_wrapper import (
     ObsNormUpdateCallback,
     CheckpointCallbackWithRMS
 )
 import tonedio_baselines.common.util as U
 #
-from flightgym import QuadrotorEnv_v1
+from flightgym import QuadrotorVisEnv_v1
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import VecMonitor
@@ -58,6 +58,10 @@ def parser():
                         help="Directory where to save the checkpoints and training metrics")
     parser.add_argument('--seed', type=int, default=0,
                         help="Random seed")
+    parser.add_argument('--num_envs', type=int, default=1,
+                        help="Number of parallel environments (RGB+Unity mode is typically stable at small values like 1-8).")
+    parser.add_argument('--num_threads', type=int, default=1,
+                        help="Number of environment worker threads.")
     parser.add_argument('-w', '--weight', type=str, 
     default='/home/heejun/projects/flightmare/tonediorl/examples/saved/2026-03-05-09-54-29/checkpoints/ppo_model_25000000_steps.zip',
                         help='trained weight path')
@@ -83,10 +87,19 @@ def parser():
     return parser
 
 def build_env(cfg_yaml_str, use_obs_norm=True):
-    env = wrapper.FlightEnvVec(QuadrotorEnv_v1(cfg_yaml_str, False), use_obs_norm=use_obs_norm)
+    env = wrapper.VisFlightEnvVec(QuadrotorVisEnv_v1(cfg_yaml_str, False), use_obs_norm=use_obs_norm)
     env = VecMonitor(env)  # episode stats logging
     # VecMonitor는 episode가 끝날 때마다 정보 업데이트. 
     return env
+
+def verify_obs_shape(vec_env, tag: str):
+    obs = vec_env.reset()
+    expected_shape = (vec_env.num_envs, 84, 84, 3)
+    print(f"[ObsCheck:{tag}] obs.shape={obs.shape}, expected={expected_shape}, dtype={obs.dtype}")
+    if obs.shape != expected_shape:
+        raise RuntimeError(f"[ObsCheck:{tag}] unexpected observation shape: got {obs.shape}, expected {expected_shape}")
+
+
 
 
 def main():
@@ -97,11 +110,12 @@ def main():
     with open(cfg_path, "r") as f:
         cfg = yaml.load(f)
 
-    if not args.train:
-        cfg["env"]["num_envs"] = 1
-        cfg["env"]["num_threads"] = 1
-
-    cfg["env"]["render"] = "yes" if args.render else "no"
+    cfg["env"]["num_envs"] = max(1, int(args.num_envs))
+    cfg["env"]["num_threads"] = max(1, int(args.num_threads))
+    if cfg["env"]["num_envs"] > 8:
+        print(f"[Warning] num_envs={cfg['env']['num_envs']} in RGB+Unity mode may be unstable/slow. Start with 1-8.")
+    
+    cfg["env"]["render"] = "yes"
 
     # cfg를 YAML "문자열"로 다시 dump (QuadrotorEnv_v1이 이걸 받는 구조)
     stream = io.StringIO()
@@ -110,9 +124,14 @@ def main():
 
     # print(cfg_yaml_str)
 
-    # main env
-    use_obs_norm = bool(args.use_obs_norm)
+    # RGB image observation mode uses Unity rendering and does not use RMS normalization
+    use_obs_norm = False
+    if args.use_obs_norm:
+        print("[Info] RGB observation mode: observation normalization is disabled.")
     env = build_env(cfg_yaml_str, use_obs_norm=use_obs_norm)
+    if not env.connectUnity():
+        raise RuntimeError("Failed to connect to Unity. RGB observation mode requires Unity to be running.")
+    verify_obs_shape(env, "train_main" if args.train else "test_main")
 
     # set random seed
     configure_random_seed(args.seed, env=env)
@@ -157,10 +176,10 @@ def main():
             )
 
         model = PPO(
-            policy="MlpPolicy",
+            policy="CnnPolicy",
             policy_kwargs=dict(
                 activation_fn=torch.nn.ReLU,
-                net_arch=[dict(pi=[256, 256], vf=[512, 512])],
+                normalize_images=True,
                 log_std_init=-0.5,
             ),
             env=env,
@@ -180,26 +199,11 @@ def main():
             device="cuda",
         )
 
-        # ---- Eval env: force num_envs=1 for evaluation ----
-        eval_cfg = cfg.copy()
-        eval_cfg["env"]["num_envs"] = 1
-        eval_cfg["env"]["num_threads"] = 1
-        eval_stream = io.StringIO()
-        yaml.dump(eval_cfg, eval_stream)
-        eval_cfg_yaml_str = eval_stream.getvalue()
-        eval_env = build_env(eval_cfg_yaml_str, use_obs_norm=use_obs_norm)
-
-        # eval_callback = EvalCallback(
-        #     eval_env,
-        #     best_model_save_path=os.path.join(saver.data_dir, "best_model"),
-        #     log_path=os.path.join(saver.data_dir, "eval_logs"),
-        #     eval_freq=args.eval_freq,
-        #     n_eval_episodes=args.n_eval_episodes,
-        #     deterministic=True,
-        #     render=False,
-        #     verbose=1,
-        #     warn=False,  # 평가 중 경고 메시지 억제
-        # )
+        # NOTE:
+        # Do not create/connect eval_env here.
+        # UnityBridge is a singleton in C++; attaching multiple VecEnv instances
+        # at once can corrupt expected message layout.
+        eval_env = None
 
         # callback_list = [eval_callback]
 
@@ -251,8 +255,15 @@ def main():
             model.save(os.path.join(saver.data_dir, "ppo_final"))
         finally:
             # 환경 정리
-            eval_env.close()
-            env.close()
+            if eval_env is not None:
+                try:
+                    eval_env.disconnectUnity()
+                finally:
+                    eval_env.close()
+            try:
+                env.disconnectUnity()
+            finally:
+                env.close()
 
     else:
         # Test mode (simple loop)
@@ -295,14 +306,11 @@ def main():
         max_ep_length = 1000  # Set a large limit for Python loop (C++ truncation is disabled)
         num_rollouts = 5
 
-        if args.render:
-            env.connectUnity()
-
         for n_roll in range(num_rollouts):
             print(f"\n=== Rollout {n_roll} ===")
 
             # rollout buffers (optional)
-            pos, euler, dpos, deuler, actions = [], [], [], [], []
+            actions = []
 
             obs = env.reset()
             done = np.array([False])
@@ -317,17 +325,15 @@ def main():
 
                 ep_len += 1
 
-                # ---- logging (obs shape: [1, 12]) ----
-                pos.append(obs[0, 0:3].tolist())
-                euler.append(obs[0, 3:6].tolist())
-                dpos.append(obs[0, 6:9].tolist())
-                deuler.append(obs[0, 9:12].tolist())
+                # ---- logging ----
                 actions.append(act[0].tolist())
 
             print(f"Rollout {n_roll} finished | length = {ep_len}")
 
-        if args.render:
+        try:
             env.disconnectUnity()
+        finally:
+            env.close()
 
 
 if __name__ == "__main__":

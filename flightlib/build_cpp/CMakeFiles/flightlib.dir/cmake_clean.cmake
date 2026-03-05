@@ -14,6 +14,7 @@ file(REMOVE_RECURSE
   "CMakeFiles/flightlib.dir/src/dynamics/quadrotor_dynamics.cpp.o"
   "CMakeFiles/flightlib.dir/src/envs/env_base.cpp.o"
   "CMakeFiles/flightlib.dir/src/envs/quadrotor_env/quadrotor_env.cpp.o"
+  "CMakeFiles/flightlib.dir/src/envs/quadrotor_env/quadrotor_vis_env.cpp.o"
   "CMakeFiles/flightlib.dir/src/envs/test_env.cpp.o"
   "CMakeFiles/flightlib.dir/src/envs/vec_env.cpp.o"
   "CMakeFiles/flightlib.dir/src/objects/object_base.cpp.o"

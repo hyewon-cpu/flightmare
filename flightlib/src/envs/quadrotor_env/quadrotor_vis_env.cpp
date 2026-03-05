@@ -1,21 +1,24 @@
-#include "flightlib/envs/quadrotor_env/quadrotor_env.hpp"
+#include "flightlib/envs/quadrotor_env/quadrotor_vis_env.hpp"
+#include <opencv2/imgproc.hpp>
 
 namespace flightlib {
 
-QuadrotorEnv::QuadrotorEnv()
-  : QuadrotorEnv(getenv("FLIGHTMARE_PATH") +
+QuadrotorVisEnv::QuadrotorVisEnv()
+  : QuadrotorVisEnv(getenv("FLIGHTMARE_PATH") +
                  std::string("/flightlib/configs/quadrotor_env.yaml")) {}
 
-QuadrotorEnv::QuadrotorEnv(const std::string &cfg_path)
+QuadrotorVisEnv::QuadrotorVisEnv(const std::string &cfg_path)
   : EnvBase(),
     pos_coeff_(0.0),
     ori_coeff_(0.0),
     lin_vel_coeff_(0.0),
     ang_vel_coeff_(0.0),
     act_coeff_(0.0),
-    goal_state_((Vector<quadenv::kNObs>() << 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 0.0,
-                 0.0, 0.0, 0.0, 0.0, 0.0)
-                  .finished()) {
+    goal_pos_((Vector<3>() << 0.0, 0.0, 5.0).finished()),
+    goal_ori_(Vector<3>::Zero()),
+    goal_lin_vel_(Vector<3>::Zero()),
+    goal_ang_vel_(Vector<3>::Zero()) {
+
   // load configuration file
   YAML::Node cfg_ = YAML::LoadFile(cfg_path);
 
@@ -25,6 +28,13 @@ QuadrotorEnv::QuadrotorEnv(const std::string &cfg_path)
   dynamics.updateParams(cfg_);
   quadrotor_ptr_->updateDynamics(dynamics);
 
+  // add RGB camera for image observations
+  rgb_camera_ = std::make_shared<RGBCamera>();
+  rgb_camera_->setWidth(quadvisenv::kImgWidth);
+  rgb_camera_->setHeight(quadvisenv::kImgHeight);
+  rgb_camera_->setPostProcesscing(std::vector<bool>{false, false, false});
+  quadrotor_ptr_->addRGBCamera(rgb_camera_);
+
   // define a bounding box
   // Keep horizontal bounds, but allow higher-altitude hovering tasks.
   world_box_ << -30, 30, -30, 30, 0, 30;
@@ -33,20 +43,20 @@ QuadrotorEnv::QuadrotorEnv(const std::string &cfg_path)
   };
 
   // define input and output dimension for the environment
-  obs_dim_ = quadenv::kNObs;
-  act_dim_ = quadenv::kNAct;
+  obs_dim_ = quadvisenv::kNObs;
+  act_dim_ = quadvisenv::kNAct;
 
   Scalar mass = quadrotor_ptr_->getMass();
-  act_mean_ = Vector<quadenv::kNAct>::Ones() * (-mass * Gz) / 4;
-  act_std_ = Vector<quadenv::kNAct>::Ones() * (-mass * 2 * Gz) / 4;
+  act_mean_ = Vector<quadvisenv::kNAct>::Ones() * (-mass * Gz) / 4;
+  act_std_ = Vector<quadvisenv::kNAct>::Ones() * (-mass * 2 * Gz) / 4;
 
   // load parameters
   loadParam(cfg_);
 }
 
-QuadrotorEnv::~QuadrotorEnv() {}
+QuadrotorVisEnv::~QuadrotorVisEnv() {}
 
-bool QuadrotorEnv::reset(Ref<Vector<>> obs, const bool random) {
+bool QuadrotorVisEnv::reset(Ref<Vector<>> obs, const bool random) {
   quad_state_.setZero();
   quad_act_.setZero();
 
@@ -56,6 +66,14 @@ bool QuadrotorEnv::reset(Ref<Vector<>> obs, const bool random) {
     quad_state_.x(QS::POSX) = uniform_dist_(random_gen_) + spawn_offset_(0);
     quad_state_.x(QS::POSY) = uniform_dist_(random_gen_) + spawn_offset_(1);
     quad_state_.x(QS::POSZ) = uniform_dist_(random_gen_) + 20 + spawn_offset_(2);
+    if (quad_state_.x(QS::POSX) < world_box_(0, 0) + 0.5)
+      quad_state_.x(QS::POSX) = world_box_(0, 0) + 0.5;
+    if (quad_state_.x(QS::POSX) > world_box_(0, 1) - 0.5)
+      quad_state_.x(QS::POSX) = world_box_(0, 1) - 0.5;
+    if (quad_state_.x(QS::POSY) < world_box_(1, 0) + 0.5)
+      quad_state_.x(QS::POSY) = world_box_(1, 0) + 0.5;
+    if (quad_state_.x(QS::POSY) > world_box_(1, 1) - 0.5)
+      quad_state_.x(QS::POSY) = world_box_(1, 1) - 0.5;
     if (quad_state_.x(QS::POSZ) < -0.0)
       quad_state_.x(QS::POSZ) = -quad_state_.x(QS::POSZ);
     // reset linear velocity
@@ -81,19 +99,38 @@ bool QuadrotorEnv::reset(Ref<Vector<>> obs, const bool random) {
   return true;
 }
 
-bool QuadrotorEnv::getObs(Ref<Vector<>> obs) {
+bool QuadrotorVisEnv::getObs(Ref<Vector<>> obs) {
   quadrotor_ptr_->getState(&quad_state_);
 
-  // convert quaternion to euler angle
-  Vector<3> euler_zyx = quad_state_.q().toRotationMatrix().eulerAngles(2, 1, 0);
-  // quaternionToEuler(quad_state_.q(), euler);
-  quad_obs_ << quad_state_.p, euler_zyx, quad_state_.v, quad_state_.w;
+  quad_obs_.setZero();
+  cv::Mat rgb_image;
+  if (rgb_camera_ != nullptr && rgb_camera_->getRGBImage(rgb_image) &&
+      !rgb_image.empty()) {
+    cv::Mat resized = rgb_image;
+    if (rgb_image.cols != quadvisenv::kImgWidth ||
+        rgb_image.rows != quadvisenv::kImgHeight) {
+      cv::resize(rgb_image, resized,
+                 cv::Size(quadvisenv::kImgWidth, quadvisenv::kImgHeight), 0.0, 0.0,
+                 cv::INTER_AREA);
+    }
+    if (!resized.isContinuous()) resized = resized.clone();
 
-  obs.segment<quadenv::kNObs>(quadenv::kObs) = quad_obs_;
+    int flat_idx = 0;
+    for (int r = 0; r < resized.rows; r++) {
+      const cv::Vec3b *row = resized.ptr<cv::Vec3b>(r);
+      for (int c = 0; c < resized.cols; c++) {
+        quad_obs_(flat_idx++) = static_cast<Scalar>(row[c][0]);
+        quad_obs_(flat_idx++) = static_cast<Scalar>(row[c][1]);
+        quad_obs_(flat_idx++) = static_cast<Scalar>(row[c][2]);
+      }
+    }
+  }
+
+  obs.segment<quadvisenv::kNObs>(quadvisenv::kObs) = quad_obs_;
   return true;
 }
 
-Scalar QuadrotorEnv::step(const Ref<Vector<>> act, Ref<Vector<>> obs) {
+Scalar QuadrotorVisEnv::step(const Ref<Vector<>> act, Ref<Vector<>> obs) {
   quad_act_ = act.cwiseProduct(act_std_) + act_mean_;
   cmd_.t += sim_dt_;
   cmd_.thrusts = quad_act_;
@@ -104,29 +141,22 @@ Scalar QuadrotorEnv::step(const Ref<Vector<>> act, Ref<Vector<>> obs) {
   // update observations
   getObs(obs);
 
-  Matrix<3, 3> rot = quad_state_.q().toRotationMatrix();
+  Vector<3> euler_zyx = quad_state_.q().toRotationMatrix().eulerAngles(2, 1, 0);
 
   // ---------------------- reward function design
   // - position tracking
-  Scalar pos_reward =
-    pos_coeff_ * (quad_obs_.segment<quadenv::kNPos>(quadenv::kPos) -
-                  goal_state_.segment<quadenv::kNPos>(quadenv::kPos))
-                   .squaredNorm();
+  Scalar pos_reward = pos_coeff_ * (quad_state_.p - goal_pos_).squaredNorm();
+
   // - orientation tracking
-  Scalar ori_reward =
-    ori_coeff_ * (quad_obs_.segment<quadenv::kNOri>(quadenv::kOri) -
-                  goal_state_.segment<quadenv::kNOri>(quadenv::kOri))
-                   .squaredNorm();
+  Scalar ori_reward = ori_coeff_ * (euler_zyx - goal_ori_).squaredNorm();
+
   // - linear velocity tracking
   Scalar lin_vel_reward =
-    lin_vel_coeff_ * (quad_obs_.segment<quadenv::kNLinVel>(quadenv::kLinVel) -
-                      goal_state_.segment<quadenv::kNLinVel>(quadenv::kLinVel))
-                       .squaredNorm();
+    lin_vel_coeff_ * (quad_state_.v - goal_lin_vel_).squaredNorm();
+
   // - angular velocity tracking
   Scalar ang_vel_reward =
-    ang_vel_coeff_ * (quad_obs_.segment<quadenv::kNAngVel>(quadenv::kAngVel) -
-                      goal_state_.segment<quadenv::kNAngVel>(quadenv::kAngVel))
-                       .squaredNorm();
+     ang_vel_coeff_ * (quad_state_.w - goal_ang_vel_).squaredNorm();
 
   // - control action penalty
   Scalar act_reward = act_coeff_ * act.cast<Scalar>().norm();
@@ -140,7 +170,7 @@ Scalar QuadrotorEnv::step(const Ref<Vector<>> act, Ref<Vector<>> obs) {
   return total_reward;
 }
 
-bool QuadrotorEnv::isTerminalState(Scalar &reward) {
+bool QuadrotorVisEnv::isTerminalState(Scalar &reward) {
   if (quad_state_.x(QS::POSZ) <= 0.02) {
     reward = -0.02;
     return true;
@@ -149,7 +179,7 @@ bool QuadrotorEnv::isTerminalState(Scalar &reward) {
   return false;
 }
 
-bool QuadrotorEnv::loadParam(const YAML::Node &cfg) {
+bool QuadrotorVisEnv::loadParam(const YAML::Node &cfg) {
   if (cfg["quadrotor_env"]) {
     sim_dt_ = cfg["quadrotor_env"]["sim_dt"].as<Scalar>();
     max_t_ = cfg["quadrotor_env"]["max_t"].as<Scalar>();
@@ -170,7 +200,7 @@ bool QuadrotorEnv::loadParam(const YAML::Node &cfg) {
   return true;
 }
 
-bool QuadrotorEnv::getAct(Ref<Vector<>> act) const {
+bool QuadrotorVisEnv::getAct(Ref<Vector<>> act) const {
   if (cmd_.t >= 0.0 && quad_act_.allFinite()) {
     act = quad_act_;
     return true;
@@ -178,17 +208,17 @@ bool QuadrotorEnv::getAct(Ref<Vector<>> act) const {
   return false;
 }
 
-bool QuadrotorEnv::getAct(Command *const cmd) const {
+bool QuadrotorVisEnv::getAct(Command *const cmd) const {
   if (!cmd_.valid()) return false;
   *cmd = cmd_;
   return true;
 }
 
-void QuadrotorEnv::addObjectsToUnity(std::shared_ptr<UnityBridge> bridge) {
+void QuadrotorVisEnv::addObjectsToUnity(std::shared_ptr<UnityBridge> bridge) {
   bridge->addQuadrotor(quadrotor_ptr_);
 }
 
-std::ostream &operator<<(std::ostream &os, const QuadrotorEnv &quad_env) {
+std::ostream &operator<<(std::ostream &os, const QuadrotorVisEnv &quad_env) {
   os.precision(3);
   os << "Quadrotor Environment:\n"
      << "obs dim =            [" << quad_env.obs_dim_ << "]\n"

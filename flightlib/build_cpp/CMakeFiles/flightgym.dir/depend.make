@@ -69,6 +69,7 @@ CMakeFiles/flightgym.dir/src/wrapper/pybind_wrapper.cpp.o: ../include/flightlib/
 CMakeFiles/flightgym.dir/src/wrapper/pybind_wrapper.cpp.o: ../include/flightlib/dynamics/quadrotor_dynamics.hpp
 CMakeFiles/flightgym.dir/src/wrapper/pybind_wrapper.cpp.o: ../include/flightlib/envs/env_base.hpp
 CMakeFiles/flightgym.dir/src/wrapper/pybind_wrapper.cpp.o: ../include/flightlib/envs/quadrotor_env/quadrotor_env.hpp
+CMakeFiles/flightgym.dir/src/wrapper/pybind_wrapper.cpp.o: ../include/flightlib/envs/quadrotor_env/quadrotor_vis_env.hpp
 CMakeFiles/flightgym.dir/src/wrapper/pybind_wrapper.cpp.o: ../include/flightlib/envs/test_env.hpp
 CMakeFiles/flightgym.dir/src/wrapper/pybind_wrapper.cpp.o: ../include/flightlib/envs/vec_env.hpp
 CMakeFiles/flightgym.dir/src/wrapper/pybind_wrapper.cpp.o: ../include/flightlib/json/json.hpp

@@ -19,33 +19,27 @@
 
 namespace flightlib {
 
-namespace quadenv {
+namespace quadvisenv {
 
 enum Ctl : int {
   // observations
   kObs = 0,
-  //
-  kPos = 0,
-  kNPos = 3,
-  kOri = 3,
-  kNOri = 3,
-  kLinVel = 6,
-  kNLinVel = 3,
-  kAngVel = 9,
-  kNAngVel = 3,
-  kNObs = 12,
+  kImgWidth = 84,
+  kImgHeight = 84,
+  kImgChannels = 3,
+  kNObs = kImgWidth * kImgHeight * kImgChannels,
   // control actions
   kAct = 0,
   kNAct = 4,
 };
 };
-class QuadrotorEnv final : public EnvBase {
+class QuadrotorVisEnv final : public EnvBase {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-  QuadrotorEnv();
-  QuadrotorEnv(const std::string &cfg_path);
-  ~QuadrotorEnv();
+  QuadrotorVisEnv();
+  QuadrotorVisEnv(const std::string &cfg_path);
+  ~QuadrotorVisEnv();
 
   // - public OpenAI-gym-style functions
   bool reset(Ref<Vector<>> obs, const bool random = true) override;
@@ -67,7 +61,7 @@ class QuadrotorEnv final : public EnvBase {
   void addObjectsToUnity(std::shared_ptr<UnityBridge> bridge);
 
   friend std::ostream &operator<<(std::ostream &os,
-                                  const QuadrotorEnv &quad_env);
+                                  const QuadrotorVisEnv &quad_env);
 
  private:
   // quadrotor
@@ -80,17 +74,21 @@ class QuadrotorEnv final : public EnvBase {
   Scalar pos_coeff_, ori_coeff_, lin_vel_coeff_, ang_vel_coeff_, act_coeff_;
 
   // observations and actions (for RL)
-  Vector<quadenv::kNObs> quad_obs_;
-  Vector<quadenv::kNAct> quad_act_;
+  Vector<quadvisenv::kNObs> quad_obs_;
+  Vector<quadvisenv::kNAct> quad_act_;
+  std::shared_ptr<RGBCamera> rgb_camera_;
 
   // reward function design (for model-free reinforcement learning)
-  Vector<quadenv::kNObs> goal_state_;
+  Vector<3> goal_pos_;
+  Vector<3> goal_ori_;
+  Vector<3> goal_lin_vel_;
+  Vector<3> goal_ang_vel_;
 
   // action and observation normalization (for learning)
-  Vector<quadenv::kNAct> act_mean_;
-  Vector<quadenv::kNAct> act_std_;
-  Vector<quadenv::kNObs> obs_mean_ = Vector<quadenv::kNObs>::Zero();
-  Vector<quadenv::kNObs> obs_std_ = Vector<quadenv::kNObs>::Ones();
+  Vector<quadvisenv::kNAct> act_mean_;
+  Vector<quadvisenv::kNAct> act_std_;
+  Vector<quadvisenv::kNObs> obs_mean_ = Vector<quadvisenv::kNObs>::Zero();
+  Vector<quadvisenv::kNObs> obs_std_ = Vector<quadvisenv::kNObs>::Ones();
 
   YAML::Node cfg_;
   Matrix<3, 2> world_box_;
