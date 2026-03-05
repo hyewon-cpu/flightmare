@@ -13,7 +13,7 @@ QuadrotorEnv::QuadrotorEnv(const std::string &cfg_path)
     lin_vel_coeff_(0.0),
     ang_vel_coeff_(0.0),
     act_coeff_(0.0),
-    goal_state_((Vector<quadenv::kNObs>() << 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 0.0,
+    goal_state_((Vector<quadenv::kNObs>() << 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 0.0,
                  0.0, 0.0, 0.0, 0.0, 0.0)
                   .finished()) {
   // load configuration file
@@ -26,7 +26,8 @@ QuadrotorEnv::QuadrotorEnv(const std::string &cfg_path)
   quadrotor_ptr_->updateDynamics(dynamics);
 
   // define a bounding box
-  world_box_ << -20, 20, -20, 20, 0, 20;
+  // Keep horizontal bounds, but allow higher-altitude hovering tasks.
+  world_box_ << -30, 30, -30, 30, 0, 30;
   if (!quadrotor_ptr_->setWorldBox(world_box_)) {
     logger_.error("cannot set wolrd box");
   };
@@ -54,7 +55,7 @@ bool QuadrotorEnv::reset(Ref<Vector<>> obs, const bool random) {
     // reset position
     quad_state_.x(QS::POSX) = uniform_dist_(random_gen_);
     quad_state_.x(QS::POSY) = uniform_dist_(random_gen_);
-    quad_state_.x(QS::POSZ) = uniform_dist_(random_gen_) + 5;
+    quad_state_.x(QS::POSZ) = uniform_dist_(random_gen_) + 20;
     if (quad_state_.x(QS::POSZ) < -0.0)
       quad_state_.x(QS::POSZ) = -quad_state_.x(QS::POSZ);
     // reset linear velocity
