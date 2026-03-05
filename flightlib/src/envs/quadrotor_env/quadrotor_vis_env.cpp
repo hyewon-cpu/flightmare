@@ -30,8 +30,15 @@ QuadrotorVisEnv::QuadrotorVisEnv(const std::string &cfg_path)
 
   // add RGB camera for image observations
   rgb_camera_ = std::make_shared<RGBCamera>();
+
+  // Explicit camera pose (body -> camera) to avoid camera being inside the body.
+  Vector<3> B_r_BC(0.0, 0.0, 0.3);
+  Matrix<3, 3> R_BC = Quaternion(1.0, 0.0, 0.0, 0.0).toRotationMatrix();
+  
   rgb_camera_->setWidth(quadvisenv::kImgWidth);
   rgb_camera_->setHeight(quadvisenv::kImgHeight);
+  rgb_camera_->setRelPose(B_r_BC, R_BC);
+
   rgb_camera_->setPostProcesscing(std::vector<bool>{false, false, false});
   quadrotor_ptr_->addRGBCamera(rgb_camera_);
 
@@ -102,7 +109,9 @@ bool QuadrotorVisEnv::reset(Ref<Vector<>> obs, const bool random) {
 bool QuadrotorVisEnv::getObs(Ref<Vector<>> obs) {
   quadrotor_ptr_->getState(&quad_state_);
 
-  quad_obs_.setZero();
+  // Keep previous frame if a new camera frame is not available this step.
+  static int missing_rgb_warn_count = 0;
+
   cv::Mat rgb_image;
   if (rgb_camera_ != nullptr && rgb_camera_->getRGBImage(rgb_image) &&
       !rgb_image.empty()) {
@@ -123,6 +132,13 @@ bool QuadrotorVisEnv::getObs(Ref<Vector<>> obs) {
         quad_obs_(flat_idx++) = static_cast<Scalar>(row[c][1]);
         quad_obs_(flat_idx++) = static_cast<Scalar>(row[c][2]);
       }
+    }
+  } else {
+    if (missing_rgb_warn_count < 20) {
+      logger_.warn(
+        "getObs: RGB frame is empty (camera queue not updated yet). "
+        "Check Unity connection/frame sync.");
+      missing_rgb_warn_count++;
     }
   }
 

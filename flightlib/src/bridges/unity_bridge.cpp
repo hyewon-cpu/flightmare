@@ -202,11 +202,8 @@ bool UnityBridge::handleOutput() {
   // create new message object
   zmqpp::message msg;
 
-  // sub_.receive(msg);
-  // Non-blocking receive: drop frame if Unity did not reply yet.
-  if (!sub_.receive(msg, true)) {
-    return false;
-  }
+  // Blocking receive: wait for Unity frame so camera queues are populated.
+  sub_.receive(msg);
 
   // unpack message metadata
   if (msg.parts() < 1) return false;
