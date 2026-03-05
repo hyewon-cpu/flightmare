@@ -133,7 +133,7 @@ Scalar QuadrotorEnv::step(const Ref<Vector<>> act, Ref<Vector<>> obs) {
 
   const Scalar w_xy = 1.0;
   const Scalar w_z = 0.3;
-  const Scalar w_vel = (z < 1.0) ? 0.12 : 0.05;
+  const Scalar w_vel = (z < 1.0) ? 0.12 : 0.05; //Z<1 이면 W_VEL = 0.12, 아니면  0.05. 낮은 고도에서는 패널티가 더 큼 
   const Scalar w_tilt = 0.1;
   const Scalar time_penalty = 0.01;
   const Scalar speed_soft_limit = 1.5;   // m/s
